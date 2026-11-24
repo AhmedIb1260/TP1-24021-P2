@@ -33,3 +33,29 @@
 4. Avec mustUnderstand="1", le serveur doit obligatoirement comprendre et traiter l'en-tête bib:jeton ; comme aucun traitement n'est prévu pour cet en-tête côté serveur, JAX-WS rejette immédiatement la requête sans exécuter la méthode et renvoie une Fault avec le faultcode S:MustUnderstand. Avec mustUnderstand="0" (valeur par défaut), l'en-tête est facultatif : le serveur ignore la balise inconnue et exécute normalement le contenu du Body.
 
 5. Contrairement aux Faults SOAP 1.1 reçues, la Fault SOAP 1.2 utilise l'espace de noms http://www.w3.org/2003/05/soap-envelope et remplace les balises par des éléments hiérarchiques et normalisés : faultcode devient soap:Code contenant soap:Value (avec soap:Sender au lieu de Client), faultstring devient soap:Reason contenant soap:Text avec l'attribut obligatoire xml:lang="fr", et detail prend une majuscule pour devenir soap:Detail.
+
+# Partie B
+
+## Etape 5
+1. L'opération est emprunterLivre, son message de fault est LivreIndisponibleFault (associé à l'élément bib:LivreIndisponible) et l'action SOAP (soapAction) à envoyer est http://supnum.mr/bib/emprunterLivre.
+
+2. La signature générée dans EmpruntPortType est : public EmpruntType emprunterLivre(String idAdherent, String isbn) throws LivreIndisponibleFault;
+
+3. Le type Java généré pour dateRetour est XMLGregorianCalendar (javax.xml.datatype.XMLGregorianCalendar) car le WSDL définit type="xs:date", alors que dans la partie A dateRetour était un simple String. 
+
+4. Le nom de la classe d'exception générée est LivreIndisponibleFault. Ce nom provient directement de l'attribut name="LivreIndisponibleFault" de la balise wsdl:message dans le WSDL.
+
+## Etape 6
+1. Oui, le WSDL publié est bien celui fourni dans src/main/resources/wsdl/EmpruntService.wsdl grâce à l'attribut wsdlLocation, et il contient le motif regex de l'ISBN ainsi que le type xs:date.
+2. Non, il n'a pas été nécessaire de modifier le fichier 01-emprunter.xml (seul l'en-tête HTTP SOAPAction a été renseigné avec "http://supnum.mr/bib/emprunterLivre"), car le contrat WSDL utilise le même espace de noms (http://supnum.mr/bib), le même nom d'opération et les mêmes noms de paramètres.
+
+3. Sans @SchemaValidation, l'ISBN 978-2-10 n'est pas refusé car JAX-WS ne vérifie pas automatiquement les restrictions XSD (xs:pattern) par défaut et le code Java ne fait pas de vérification manuelle. Avec @SchemaValidation, JAX-WS valide la requête contre le schéma XSD avant l'exécution de la méthode et renvoie une Fault SOAP S:Client.
+
+4. Si l'on retire wsdlLocation, JAX-WS ignore le fichier WSDL fourni et génère un nouveau contrat à partir des classes Java : on perd alors la restriction xs:pattern sur l'ISBN, l'attribut soapAction redevient vide ("") et le schéma XSD est déporté dans un fichier séparé (?xsd=1).
+
+## Conclusion
+1. Deux différences entre le WSDL de la partie A et celui de la partie B : le WSDL de la partie B intègre directement un schéma XSD avec des types stricts (xs:date et IsbnType avec xs:pattern) alors que la partie A utilise un XSD externe où tout est typé en xs:string ; de plus, la partie B définit une soapAction explicite et elementFormDefault="qualified", tandis que la partie A génère une soapAction vide et elementFormDefault="unqualified".
+
+2. Si l'on renomme le champ dateRetour dans le code Java, c'est le projet code-first (partie A) qui voit son contrat WSDL changer automatiquement (en contract-first, le WSDL reste figé et le code ne compile plus tant qu'il ne respecte pas le contrat). Le risque pour les clients est de provoquer des erreurs de désérialisation et de casser les applications existantes.
+
+3. Pour le service Paiement appelé par plusieurs équipes et langages (.NET, PHP, Node.js), il faut choisir l'approche contract-first afin de partager un contrat WSDL/XSD strict et indépendant des technologies. Pour un prototype interne de deux jours, l'approche code-first suffit car elle est beaucoup plus rapide à développer. 
